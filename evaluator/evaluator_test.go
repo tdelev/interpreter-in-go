@@ -175,6 +175,10 @@ func TestErrorHandling(t *testing.T) {
 		}
 	`, "unknown operator: BOOLEAN + BOOLEAN",
 		},
+		{
+			`"Hello" - "world"`,
+			"unknown operator: STRING - STRING",
+		},
 	}
 	for _, tt := range tests {
 		evaluated := testEval(tt.input)
@@ -229,12 +233,41 @@ func TestFunctionApplication(t *testing.T) {
 
 func TestClosures(t *testing.T) {
 	input := `
-let newAdder = fn(x) {
-fn(y) { x + y };
-};
-let addTwo = newAdder(2);
-addTwo(2);`
+		let newAdder = fn(x) {
+		fn(y) { x + y };
+		};
+		let addTwo = newAdder(2);
+		addTwo(2);
+	`
 	testIntegerObject(t, testEval(input), 4)
+}
+
+func TestStringLiteral(t *testing.T) {
+	input := `"Hello World!"`
+
+	evaluated := testEval(input)
+	str, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected String. got=%T (%+v)", evaluated, evaluated)
+	}
+
+	if str.Value != "Hello World!" {
+		t.Fatalf("expected: Hello World!, got=%s", str.Value)
+	}
+}
+
+func TestStringConcatenation(t *testing.T) {
+	input := `"Hello" + " " + "World!"`
+
+	evaluated := testEval(input)
+	str, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected String. got=%T (%+v)", evaluated, evaluated)
+	}
+
+	if str.Value != "Hello World!" {
+		t.Fatalf("expected: Hello World!, got=%s", str.Value)
+	}
 }
 
 func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
