@@ -60,11 +60,14 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		env.Set(node.Name.Value, value)
 		// return Eval(node, env)
 	case *ast.Identifier:
-		obj, ok := env.Get(node.Value)
-		if !ok {
-			return newError("identifier not found: %s", node.Value)
+		if obj, ok := env.Get(node.Value); ok {
+			return obj
 		}
-		return obj
+
+		if builtin, ok := builtins[node.Value]; ok {
+			return builtin
+		}
+		return newError("identifier not found: %s", node.Value)
 	case *ast.FunctionLiteral:
 		return &object.Function{
 			Parameters: node.Parameters,
@@ -76,18 +79,42 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		if isError(function) {
 			return function
 		}
-		args := make([]object.Object, len(node.Arguments))
-		for i, arg := range node.Arguments {
-			args[i] = Eval(arg, env)
-			if isError(args[i]) {
-				return args[i]
-			}
-		}
+		args := evalExpressions(node.Arguments, env)
 		return applyFunction(function, args)
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
+	case *ast.ArrayLiteral:
+		elements := evalExpressions(node.Elements, env)
+		if len(elements) == 1 && isError(elements[0]) {
+			return elements[0]
+		}
+		return &object.Array{Elements: elements}
+	case *ast.IndexExpression:
+		array := Eval(node.Left, env)
+		if isError(array) {
+			return array
+		}
+		index := Eval(node.Index, env)
+		if isError(index) {
+			return index
+		}
+		return evalIndexExpression(array, index)
+
 	}
 	return object.NULL
+}
+
+func evalExpressions(expressions []ast.Expression, env *object.Environment) []object.Object {
+	var result []object.Object
+
+	for _, e := range expressions {
+		evaluated := Eval(e, env)
+		if isError(evaluated) {
+			return []object.Object{evaluated}
+		}
+		result = append(result, evaluated)
+	}
+	return result
 }
 
 func applyFunction(function object.Object, args []object.Object) object.Object {
@@ -96,6 +123,8 @@ func applyFunction(function object.Object, args []object.Object) object.Object {
 		extendedEnv := extendFunctionEnv(function, args)
 		value := Eval(function.Body, extendedEnv)
 		return unwrapReturnValue(value)
+	case *object.Builtin:
+		return function.Fn(args...)
 	default:
 		return newError("not a function: %s", function.Type())
 	}
@@ -247,7 +276,27 @@ func evalStatements(statements []ast.Statement, env *object.Environment) object.
 	return result
 }
 
-func newError(message string, args ...interface{}) *object.Error {
+func evalIndexExpression(array, index object.Object) object.Object {
+	switch {
+	case array.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
+		return evalArrayIndexExpression(array, index)
+	default:
+		return newError("index operator not supported: %s", index.Type())
+	}
+
+}
+
+func evalArrayIndexExpression(array, index object.Object) object.Object {
+	a := array.(*object.Array)
+	i := index.(*object.Integer).Value
+	max := int64(len(a.Elements) - 1)
+	if i < 0 || i > max {
+		return object.NULL
+	}
+	return a.Elements[i]
+}
+
+func newError(message string, args ...any) *object.Error {
 	return &object.Error{Message: fmt.Sprintf(message, args...)}
 }
 

@@ -136,7 +136,7 @@ func TestParsingPrefixExpressions(t *testing.T) {
 	tests := []struct {
 		input        string
 		operator     string
-		integerValue interface{}
+		integerValue any
 	}{
 		{"!5", "!", 5},
 		{"-15", "-", 15},
@@ -174,9 +174,9 @@ func TestParsingPrefixExpressions(t *testing.T) {
 func TestParsingInfixExpressions(t *testing.T) {
 	tests := []struct {
 		input      string
-		leftValue  interface{}
+		leftValue  any
 		operator   string
-		rightValue interface{}
+		rightValue any
 	}{
 		{"5 + 5", 5, "+", 5},
 		{"5 - 5", 5, "-", 5},
@@ -255,6 +255,8 @@ func TestOperatorPrecedenceParsing(t *testing.T) {
 		{"a + add(b * c) + d", "((a + add((b * c))) + d)"},
 		{"add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))"},
 		{"add(a + b + c * d / f + g)", "add((((a + b) + ((c * d) / f)) + g))"},
+		{"a * [1, 2, 3, 4][b * c] * d", "((a * ([1, 2, 3, 4][(b * c)])) * d)"},
+		{"add(a * b[2], b[1], 2 * [1, 2][1])", "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"},
 	}
 
 	for _, test := range tests {
@@ -463,7 +465,7 @@ func TestLetStatements(t *testing.T) {
 	tests := []struct {
 		input              string
 		expectedIdentifier string
-		expectedValue      interface{}
+		expectedValue      any
 	}{
 		{"let x = 5;", "x", 5},
 		{"let y = true;", "y", true},
@@ -489,6 +491,60 @@ func TestLetStatements(t *testing.T) {
 		if !testLiteralExpression(t, stmt.Value, test.expectedValue) {
 			return
 		}
+	}
+}
+
+func TestParsingArrayLiterals(t *testing.T) {
+	input := "[1, 2 * 2, 3 + 3]"
+
+	l := lexer.New(input)
+	p := New(l)
+
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	checkProgram(t, program)
+
+	stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("Expected ExpressionStatement, got %T", program.Statements[0])
+	}
+	al, ok := stmt.Expression.(*ast.ArrayLiteral)
+	if !ok {
+		t.Fatalf("Expected ArrayLiteral, got %T", stmt.Expression)
+	}
+	if len(al.Elements) != 3 {
+		t.Fatalf("len(array.Elements) not 3. got=%d", len(al.Elements))
+	}
+	testIntegerLiteralExpression(t, al.Elements[0], 1)
+	testInfixExpression(t, al.Elements[1], 2, "*", 2)
+	testInfixExpression(t, al.Elements[2], 3, "+", 3)
+}
+
+func TestParsingIndexExpression(t *testing.T) {
+	input := "myArray[1 + 1]"
+
+	l := lexer.New(input)
+	p := New(l)
+
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	checkProgram(t, program)
+
+	stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("Expected ExpressionStatement, got %T", program.Statements[0])
+	}
+	ie, ok := stmt.Expression.(*ast.IndexExpression)
+	if !ok {
+		t.Fatalf("Expected IndexExpression, got %T", stmt.Expression)
+	}
+	if !testIdentifier(t, ie.Left, "myArray") {
+		return
+	}
+	if !testInfixExpression(t, ie.Index, 1, "+", 1) {
+		return
 	}
 }
 
@@ -543,7 +599,7 @@ func testBoolean(test *testing.T, expression ast.Expression, value bool) bool {
 	return true
 }
 
-func testLiteralExpression(test *testing.T, expression ast.Expression, expected interface{}) bool {
+func testLiteralExpression(test *testing.T, expression ast.Expression, expected any) bool {
 	switch v := expected.(type) {
 	case int:
 		return testIntegerLiteralExpression(test, expression, int64(v))
@@ -559,7 +615,7 @@ func testLiteralExpression(test *testing.T, expression ast.Expression, expected 
 	}
 }
 
-func testInfixExpression(test *testing.T, expression ast.Expression, left interface{}, operator string, right interface{}) bool {
+func testInfixExpression(test *testing.T, expression ast.Expression, left any, operator string, right any) bool {
 	infix, ok := expression.(*ast.InfixExpression)
 	if !ok {
 		test.Errorf("Expected InfixExpression, got %T", expression)

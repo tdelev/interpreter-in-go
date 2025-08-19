@@ -17,6 +17,8 @@ const (
 	ERROR_OBJ        = "ERROR"
 	FUNCTION_OBJ     = "FUNCTION"
 	STRING_OBJ       = "STRING"
+	BUILTIN_OBJ      = "BUILTIN"
+	ARRAY_OBJ        = "ARRAY"
 )
 
 var (
@@ -122,4 +124,36 @@ func (s *String) Inspect() string {
 
 func (s *String) Type() ObjectType {
 	return STRING_OBJ
+}
+
+type BuiltinFunction func(args ...Object) Object
+
+type Builtin struct {
+	Fn BuiltinFunction
+}
+
+func (b *Builtin) Type() ObjectType {
+	return BUILTIN_OBJ
+}
+
+func (b *Builtin) Inspect() string {
+	return "builtin function"
+}
+
+type Array struct {
+	Elements []Object
+}
+
+func (a *Array) Type() ObjectType {
+	return ARRAY_OBJ
+}
+
+func (a *Array) Inspect() string {
+	elements := []string{}
+
+	for _, e := range a.Elements {
+		elements = append(elements, e.Inspect())
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(elements, ", "))
 }
